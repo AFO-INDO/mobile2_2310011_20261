@@ -1,18 +1,23 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { StoreProvider } from "@/context/StoreContext";
+import { Stack } from "expo-router";
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
-
-SplashScreen.preventAutoHideAsync();
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+export default function RootLayout() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <StoreProvider>
+      <Stack>
+        {/* Layar pembuka & autentikasi menggunakan tampilan full-screen modern */}
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="register" options={{ headerShown: false }} />
+        {/* Grup Bottom Navigation (5 Tab) setelah berhasil login */}
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
+          }}
+        />
+      </Stack>
+    </StoreProvider>
   );
 }
