@@ -3,5 +3,3 @@ export default function Index() {
   // Saat aplikasi pertama kali dibuka, langsung arahkan ke layar Login
   return <Redirect href="/login" />;
 }
-8;
-;
