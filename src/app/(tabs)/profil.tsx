@@ -1,9 +1,16 @@
+import {
+  clearAuthSession,
+  getAuthSession,
+  logoutApi,
+  UserData,
+} from "@/services/authService";
 import { tabStyles } from "@/styles/tabStyles";
-import { showConfirm, showNotification } from "@/utils/alert";
+import { showNotification } from "@/utils/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   Switch,
   Text,
@@ -13,6 +20,9 @@ import {
 } from "react-native";
 
 export default function ProfilScreen() {
+  const [user, setUser] = useState<UserData | null>(null);
+  const [loadingLogout, setLoadingLogout] = useState(false);
+
   // Form State yang bisa diinput & diedit
   const [nama, setNama] = useState("Al Fahrul Ozi");
   const [email, setEmail] = useState("afo@kampus.ac.id");
@@ -22,6 +32,17 @@ export default function ProfilScreen() {
   // Setting Switches
   const [soundNotif, setSoundNotif] = useState(true);
   const [autoPrint, setAutoPrint] = useState(false);
+
+  useEffect(() => {
+    getAuthSession().then((session) => {
+      if (session) {
+        setUser(session.user);
+        if (session.user.name) setNama(session.user.name);
+        if (session.user.email) setEmail(session.user.email);
+        if (session.user.no_hp) setNoHp(session.user.no_hp);
+      }
+    });
+  }, []);
 
   const handleSimpanProfil = () => {
     if (!nama.trim() || !email.trim()) {
@@ -35,12 +56,18 @@ export default function ProfilScreen() {
     );
   };
 
-  const handleLogout = () => {
-    showConfirm(
-      "Konfirmasi Keluar",
-      "Apakah Anda yakin ingin keluar dari akun?",
-      () => router.replace("/login"),
-    );
+  const handleLogout = async () => {
+    setLoadingLogout(true);
+    try {
+      const session = await getAuthSession();
+      if (session?.token) {
+        await logoutApi(session.token);
+      }
+      await clearAuthSession();
+      router.replace("/login");
+    } finally {
+      setLoadingLogout(false);
+    }
   };
 
   return (
@@ -140,7 +167,10 @@ export default function ProfilScreen() {
 
         {/* Tombol Simpan Perubahan */}
         <TouchableOpacity
-          style={[tabStyles.primaryBtn, { marginTop: 6, backgroundColor: "#00C2CB" }]}
+          style={[
+            tabStyles.primaryBtn,
+            { marginTop: 6, backgroundColor: "#00C2CB" },
+          ]}
           activeOpacity={0.8}
           onPress={handleSimpanProfil}
         >
@@ -168,10 +198,19 @@ export default function ProfilScreen() {
           }}
         >
           <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={{ fontSize: 13.5, fontWeight: "800", color: "#000000" }}>
+            <Text
+              style={{ fontSize: 13.5, fontWeight: "800", color: "#000000" }}
+            >
               Suara Notifikasi Transaksi
             </Text>
-            <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600", marginTop: 2 }}>
+            <Text
+              style={{
+                fontSize: 12,
+                color: "#374151",
+                fontWeight: "600",
+                marginTop: 2,
+              }}
+            >
               Mainkan suara "beep" saat pembayaran berhasil
             </Text>
           </View>
@@ -192,10 +231,19 @@ export default function ProfilScreen() {
           }}
         >
           <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={{ fontSize: 13.5, fontWeight: "800", color: "#000000" }}>
+            <Text
+              style={{ fontSize: 13.5, fontWeight: "800", color: "#000000" }}
+            >
               Cetak Struk Otomatis
             </Text>
-            <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600", marginTop: 2 }}>
+            <Text
+              style={{
+                fontSize: 12,
+                color: "#374151",
+                fontWeight: "600",
+                marginTop: 2,
+              }}
+            >
               Kirim perintah cetak nota ke printer bluetooth
             </Text>
           </View>
@@ -210,12 +258,19 @@ export default function ProfilScreen() {
 
       {/* Tombol Logout - Neobrutalism Magenta Accent */}
       <TouchableOpacity
-        style={tabStyles.logoutButton}
+        style={[tabStyles.logoutButton, loadingLogout && { opacity: 0.65 }]}
         activeOpacity={0.8}
+        disabled={loadingLogout}
         onPress={handleLogout}
       >
-        <Ionicons name="log-out-outline" size={19} color="#000000" />
-        <Text style={tabStyles.logoutButtonText}>Keluar dari Akun</Text>
+        {loadingLogout ? (
+          <ActivityIndicator color="#DC2626" />
+        ) : (
+          <>
+            <Ionicons name="log-out-outline" size={20} color="##DC2626" />
+            <Text style={tabStyles.logoutButtonText}>Keluar dari Akun</Text>
+          </>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );

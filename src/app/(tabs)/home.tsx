@@ -1,13 +1,21 @@
 import { useStore } from "@/context/StoreContext";
+import { getAuthSession, UserData } from "@/services/authService";
 import { homeStyles } from "@/styles/homeStyles";
 import { tabStyles } from "@/styles/tabStyles";
 import { showNotification } from "@/utils/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
+  const [user, setUser] = useState<UserData | null>(null);
+  useEffect(() => {
+    getAuthSession().then((session) => {
+      if (session) setUser(session.user);
+    });
+  }, []);
   const { email } = useLocalSearchParams<{ email?: string }>();
   const { produkList, transaksiList } = useStore();
 
@@ -80,7 +88,9 @@ export default function HomeScreen() {
         {/* Menu Cepat Layanan */}
         <View style={homeStyles.menuCard}>
           <View style={homeStyles.menuHeader}>
-            <Text style={homeStyles.menuSectionTitle}>{"Layanan & Navigasi"}</Text>
+            <Text style={homeStyles.menuSectionTitle}>
+              {"Layanan & Navigasi"}
+            </Text>
             <Text style={homeStyles.menuSectionSubtitle}>
               {"Pintasan cepat modul operasional kasir & inventaris"}
             </Text>
@@ -91,7 +101,9 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={homeStyles.menuItem}
               activeOpacity={0.7}
-              onPress={() => handleMenuPress("Katalog Produk", "/(tabs)/produk")}
+              onPress={() =>
+                handleMenuPress("Katalog Produk", "/(tabs)/produk")
+              }
             >
               <View style={[homeStyles.menuIconWrapper, homeStyles.iconBgBlue]}>
                 <Ionicons name="cube" size={26} color="#000000" />
@@ -107,7 +119,9 @@ export default function HomeScreen() {
                 handleMenuPress("Transaksi Kasir", "/(tabs)/transaksi")
               }
             >
-              <View style={[homeStyles.menuIconWrapper, homeStyles.iconBgGreen]}>
+              <View
+                style={[homeStyles.menuIconWrapper, homeStyles.iconBgGreen]}
+              >
                 <Ionicons name="cart" size={26} color="#000000" />
               </View>
               <Text style={homeStyles.menuLabel}>Kasir</Text>
@@ -121,7 +135,9 @@ export default function HomeScreen() {
                 handleMenuPress("Laporan Keuangan", "/(tabs)/report")
               }
             >
-              <View style={[homeStyles.menuIconWrapper, homeStyles.iconBgAmber]}>
+              <View
+                style={[homeStyles.menuIconWrapper, homeStyles.iconBgAmber]}
+              >
                 <Ionicons name="stats-chart" size={26} color="#000000" />
               </View>
               <Text style={homeStyles.menuLabel}>Laporan</Text>
@@ -157,7 +173,9 @@ export default function HomeScreen() {
               activeOpacity={0.7}
               onPress={() => handleMenuPress("Profil Saya", "/(tabs)/profil")}
             >
-              <View style={[homeStyles.menuIconWrapper, homeStyles.iconBgPurple]}>
+              <View
+                style={[homeStyles.menuIconWrapper, homeStyles.iconBgPurple]}
+              >
                 <Ionicons name="person" size={26} color="#000000" />
               </View>
               <Text style={homeStyles.menuLabel}>Profil</Text>

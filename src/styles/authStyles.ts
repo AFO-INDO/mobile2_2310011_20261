@@ -186,4 +186,13 @@ export const authStyles = StyleSheet.create({
     color: "#000000",
     textDecorationLine: "underline",
   },
+  primaryButtonDisabled: {
+    opacity: 0.65,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    },
 });
