@@ -1,59 +1,260 @@
+import { getStorageImageUrl } from "@/config/api";
 import {
   clearAuthSession,
+  fetchProfileApi,
   getAuthSession,
   logoutApi,
+  updatePasswordApi,
+  updateProfileApi,
+  updateStoredUser,
+  uploadProfilePhotoApi,
   UserData,
 } from "@/services/authService";
 import { tabStyles } from "@/styles/tabStyles";
-import { showNotification } from "@/utils/alert";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024; // 5 MB
+
 export default function ProfilScreen() {
   const [user, setUser] = useState<UserData | null>(null);
+  const [activeTab, setActiveTab] = useState<"profil" | "password">("profil");
+
+  // State Form Update Profil
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [noHp, setNoHp] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // State Form Ganti Kata Sandi
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  // State Upload Foto Profil & Logout
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [loadingLogout, setLoadingLogout] = useState(false);
 
-  // Form State yang bisa diinput & diedit
-  const [nama, setNama] = useState("Al Fahrul Ozi");
-  const [email, setEmail] = useState("afo@kampus.ac.id");
-  const [noHp, setNoHp] = useState("082360180484");
-  const [nim, setNim] = useState("2310011");
+  const fillProfileForm = (u: UserData) => {
+    setUser(u);
+    setName(u.name || "");
+    setEmail(u.email || "");
+    setNoHp(u.no_hp || "");
+  };
 
-  // Setting Switches
-  const [soundNotif, setSoundNotif] = useState(true);
-  const [autoPrint, setAutoPrint] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getAuthSession().then(async (session) => {
+        if (!session || !active) return;
+        fillProfileForm(session.user);
 
-  useEffect(() => {
-    getAuthSession().then((session) => {
-      if (session) {
-        setUser(session.user);
-        if (session.user.name) setNama(session.user.name);
-        if (session.user.email) setEmail(session.user.email);
-        if (session.user.no_hp) setNoHp(session.user.no_hp);
+        // Sinkronisasi diam-diam dengan data terbaru di server Laravel
+        try {
+          const fresh = await fetchProfileApi(session.token);
+          if (active && fresh.user) {
+            fillProfileForm(fresh.user);
+            await updateStoredUser(fresh.user);
+          }
+        } catch {
+          // Jika offline sementara, tetap tampilkan cache AsyncStorage
+        }
+      });
+
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  // Fungsi Pilih Foto: Kamera Langsung atau Galeri HP
+  const handlePickPhoto = async (source: "camera" | "gallery") => {
+    try {
+      if (source === "camera") {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert(
+            "Izin Kamera Ditolak",
+            "Aktifkan izin kamera pada pengaturan HP agar dapat mengambil foto.",
+          );
+          return;
+        }
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert(
+            "Izin Galeri Ditolak",
+            "Aktifkan izin galeri pada pengaturan HP untuk memilih foto.",
+          );
+          return;
+        }
       }
-    });
-  }, []);
 
-  const handleSimpanProfil = () => {
-    if (!nama.trim() || !email.trim()) {
-      showNotification("Validasi Gagal", "Nama dan Email wajib diisi.");
+      const pickerOptions: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      };
+
+      const result =
+        source === "camera"
+          ? await ImagePicker.launchCameraAsync(pickerOptions)
+          : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      if (asset.fileSize && asset.fileSize > MAX_PHOTO_BYTES) {
+        Alert.alert(
+          "Ukuran Foto Terlalu Besar",
+          "Ukuran maksimal foto yang diperbolehkan adalah 5 MB.",
+        );
+        return;
+      }
+
+      const session = await getAuthSession();
+      if (!session?.token) {
+        Alert.alert("Sesi Habis", "Silakan login kembali.");
+        router.replace("/login");
+        return;
+      }
+
+      setUploadingPhoto(true);
+      const res = await uploadProfilePhotoApi(session.token, {
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+      });
+
+      fillProfileForm(res.user);
+      await updateStoredUser(res.user);
+      Alert.alert(
+        "Berhasil",
+        res.message || "Foto profil berhasil diperbarui.",
+      );
+    } catch (error) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : "Gagal mengunggah foto profil.";
+      Alert.alert("Upload Foto Gagal", msg);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  // Fungsi Simpan Update Profil (Nama, Email, Nomor HP)
+  const handleSaveProfile = async () => {
+    if (!name.trim() || !email.trim() || !noHp.trim()) {
+      Alert.alert(
+        "Input Belum Lengkap",
+        "Nama, email, dan nomor HP wajib diisi.",
+      );
       return;
     }
 
-    showNotification(
-      "Profil Disimpan",
-      `Data profil ${nama.trim()} berhasil diperbarui secara lokal.`,
-    );
+    setSavingProfile(true);
+    try {
+      const session = await getAuthSession();
+      if (!session?.token) {
+        router.replace("/login");
+        return;
+      }
+
+      const res = await updateProfileApi(session.token, {
+        name: name.trim(),
+        email: email.trim(),
+        no_hp: noHp.trim(),
+      });
+
+      fillProfileForm(res.user);
+      await updateStoredUser(res.user);
+      Alert.alert("Berhasil", res.message || "Profil berhasil diperbarui.");
+    } catch (error) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : "Gagal memperbarui data profil.";
+      Alert.alert("Update Profil Gagal", msg);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  // Fungsi Simpan Kata Sandi Baru
+  const handleSavePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      Alert.alert(
+        "Input Belum Lengkap",
+        "Semua kolom kata sandi wajib diisi.",
+      );
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert(
+        "Kata Sandi Lemah",
+        "Kata sandi baru minimal terdiri dari 6 karakter.",
+      );
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert(
+        "Konfirmasi Tidak Cocok",
+        "Konfirmasi kata sandi baru tidak sama.",
+      );
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const session = await getAuthSession();
+      if (!session?.token) {
+        router.replace("/login");
+        return;
+      }
+
+      const res = await updatePasswordApi(session.token, {
+        current_password: currentPassword,
+        password: newPassword,
+        password_confirmation: confirmPassword,
+      });
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      Alert.alert("Berhasil", res.message);
+    } catch (error) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : "Gagal memperbarui kata sandi.";
+      Alert.alert("Ganti Kata Sandi Gagal", msg);
+    } finally {
+      setSavingPassword(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -70,208 +271,354 @@ export default function ProfilScreen() {
     }
   };
 
+  const photoUrl = getStorageImageUrl(user?.foto);
+
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={tabStyles.screenContainer}
-      contentContainerStyle={tabStyles.scrollContent}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      {/* Kartu Profil & Avatar - Neobrutalism Style */}
-      <View style={[tabStyles.card, { alignItems: "center" }]}>
-        <View style={tabStyles.profileAvatar}>
-          <Ionicons name="person" size={38} color="#000000" />
-        </View>
-        <Text style={tabStyles.sectionTitle}>{nama || "Pengguna"}</Text>
-        <Text
-          style={{
-            fontSize: 13,
-            color: "#000000",
-            fontWeight: "700",
-            marginTop: 4,
-            backgroundColor: "#00C2CB",
-            paddingHorizontal: 8,
-            paddingVertical: 2,
-            borderRadius: 4,
-            borderWidth: 1.5,
-            borderColor: "#000000",
-          }}
-        >
-          {email || "email@kampus.ac.id"}
-        </Text>
-        <View style={[tabStyles.badgeBlue, { marginTop: 10 }]}>
-          <Text style={tabStyles.badgeBlueText}>Kasir Aktif • Mobile 2</Text>
-        </View>
-      </View>
-
-      {/* Formulir Edit Profil (Bisa Diinput) */}
-      <View style={tabStyles.card}>
-        <View style={tabStyles.cardHeaderRow}>
-          <Text style={[tabStyles.sectionTitle, { fontSize: 16 }]}>
-            Informasi Akun
-          </Text>
-          <Ionicons name="create-outline" size={20} color="#000000" />
-        </View>
-
-        {/* Input Nama */}
-        <View style={tabStyles.formInputGroup}>
-          <Text style={tabStyles.formLabel}>Nama Lengkap</Text>
-          <TextInput
-            style={tabStyles.formTextInput}
-            value={nama}
-            onChangeText={setNama}
-            placeholder="Masukkan nama lengkap"
-            placeholderTextColor="#6B7280"
-          />
-        </View>
-
-        {/* Input Email */}
-        <View style={tabStyles.formInputGroup}>
-          <Text style={tabStyles.formLabel}>Alamat Email</Text>
-          <TextInput
-            style={tabStyles.formTextInput}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            placeholder="nama@kampus.ac.id"
-            placeholderTextColor="#6B7280"
-          />
-        </View>
-
-        {/* Input NIM & No HP */}
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <View style={[tabStyles.formInputGroup, { flex: 1 }]}>
-            <Text style={tabStyles.formLabel}>NIM / ID Kasir</Text>
-            <TextInput
-              style={tabStyles.formTextInput}
-              value={nim}
-              onChangeText={setNim}
-              keyboardType="numeric"
-              placeholder="NIM"
-              placeholderTextColor="#6B7280"
-            />
-          </View>
-          <View style={[tabStyles.formInputGroup, { flex: 1 }]}>
-            <Text style={tabStyles.formLabel}>No. Handphone</Text>
-            <TextInput
-              style={tabStyles.formTextInput}
-              value={noHp}
-              onChangeText={setNoHp}
-              keyboardType="phone-pad"
-              placeholder="08..."
-              placeholderTextColor="#6B7280"
-            />
-          </View>
-        </View>
-
-        {/* Tombol Simpan Perubahan */}
-        <TouchableOpacity
-          style={[
-            tabStyles.primaryBtn,
-            { marginTop: 6, backgroundColor: "#00C2CB" },
-          ]}
-          activeOpacity={0.8}
-          onPress={handleSimpanProfil}
-        >
-          <Ionicons name="save-outline" size={18} color="#000000" />
-          <Text style={tabStyles.primaryBtnText}>Simpan Perubahan Profil</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Pengaturan Aplikasi & Perangkat */}
-      <View style={tabStyles.card}>
-        <Text
-          style={[tabStyles.sectionTitle, { fontSize: 16, marginBottom: 12 }]}
-        >
-          Preferensi Kasir
-        </Text>
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            paddingVertical: 10,
-            borderBottomWidth: 1.5,
-            borderBottomColor: "#000000",
-          }}
-        >
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text
-              style={{ fontSize: 13.5, fontWeight: "800", color: "#000000" }}
-            >
-              Suara Notifikasi Transaksi
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#374151",
-                fontWeight: "600",
-                marginTop: 2,
-              }}
-            >
-              Mainkan suara "beep" saat pembayaran berhasil
-            </Text>
-          </View>
-          <Switch
-            value={soundNotif}
-            onValueChange={setSoundNotif}
-            trackColor={{ false: "#D1D5DB", true: "#00C2CB" }}
-            thumbColor={soundNotif ? "#000000" : "#6B7280"}
-          />
-        </View>
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            paddingVertical: 10,
-          }}
-        >
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text
-              style={{ fontSize: 13.5, fontWeight: "800", color: "#000000" }}
-            >
-              Cetak Struk Otomatis
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#374151",
-                fontWeight: "600",
-                marginTop: 2,
-              }}
-            >
-              Kirim perintah cetak nota ke printer bluetooth
-            </Text>
-          </View>
-          <Switch
-            value={autoPrint}
-            onValueChange={setAutoPrint}
-            trackColor={{ false: "#D1D5DB", true: "#00C2CB" }}
-            thumbColor={autoPrint ? "#000000" : "#6B7280"}
-          />
-        </View>
-      </View>
-
-      {/* Tombol Logout - Neobrutalism Magenta Accent */}
-      <TouchableOpacity
-        style={[tabStyles.logoutButton, loadingLogout && { opacity: 0.65 }]}
-        activeOpacity={0.8}
-        disabled={loadingLogout}
-        onPress={handleLogout}
+      <ScrollView
+        style={tabStyles.screenContainer}
+        contentContainerStyle={tabStyles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {loadingLogout ? (
-          <ActivityIndicator color="#DC2626" />
+        {/* Kartu Header Avatar + Tombol Kamera & Galeri */}
+        <View style={tabStyles.profileHeaderCard}>
+          <View style={tabStyles.profileAvatar}>
+            {photoUrl ? (
+              <Image
+                source={{ uri: photoUrl }}
+                style={tabStyles.profileAvatarImage}
+                contentFit="cover"
+                transition={200}
+              />
+            ) : (
+              <Ionicons name="person" size={40} color="#000000" />
+            )}
+            {uploadingPhoto && (
+              <View style={tabStyles.avatarOverlayLoading}>
+                <ActivityIndicator color="#FFFFFF" />
+              </View>
+            )}
+          </View>
+
+          <Text style={tabStyles.sectionTitle}>
+            {user?.name || "Profil Pengguna"}
+          </Text>
+          <Text style={tabStyles.sectionSubtitle}>
+            {user?.email || "-"}
+          </Text>
+
+          <View style={tabStyles.photoActionRow}>
+            <TouchableOpacity
+              style={tabStyles.photoActionButton}
+              activeOpacity={0.8}
+              disabled={uploadingPhoto}
+              onPress={() => handlePickPhoto("camera")}
+            >
+              <Ionicons name="camera-outline" size={18} color="#000000" />
+              <Text style={tabStyles.photoActionButtonText}>Kamera</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                tabStyles.photoActionButton,
+                { backgroundColor: "#FFE600" },
+              ]}
+              activeOpacity={0.8}
+              disabled={uploadingPhoto}
+              onPress={() => handlePickPhoto("gallery")}
+            >
+              <Ionicons name="images-outline" size={18} color="#000000" />
+              <Text style={tabStyles.photoActionButtonText}>Galeri</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={tabStyles.photoHintText}>
+            JPG/PNG/WebP • Maks 5 MB • Otomatis dikonversi ke WebP ringan
+          </Text>
+        </View>
+
+        {/* Switcher 2 Tab: Data Profil & Ganti Sandi */}
+        <View style={tabStyles.segmentContainer}>
+          <TouchableOpacity
+            style={[
+              tabStyles.segmentButton,
+              activeTab === "profil" && tabStyles.segmentButtonActive,
+            ]}
+            activeOpacity={0.8}
+            onPress={() => setActiveTab("profil")}
+          >
+            <Ionicons
+              name="person-circle-outline"
+              size={18}
+              color={activeTab === "profil" ? "#000000" : "#374151"}
+            />
+            <Text
+              style={[
+                tabStyles.segmentText,
+                activeTab === "profil" && tabStyles.segmentTextActive,
+              ]}
+            >
+              Data Profil
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              tabStyles.segmentButton,
+              activeTab === "password" && tabStyles.segmentButtonActive,
+            ]}
+            activeOpacity={0.8}
+            onPress={() => setActiveTab("password")}
+          >
+            <Ionicons
+              name="key-outline"
+              size={18}
+              color={activeTab === "password" ? "#000000" : "#374151"}
+            />
+            <Text
+              style={[
+                tabStyles.segmentText,
+                activeTab === "password" && tabStyles.segmentTextActive,
+              ]}
+            >
+              Ganti Sandi
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Form Aktif Sesuai Tab */}
+        {activeTab === "profil" ? (
+          <View style={tabStyles.card}>
+            <View style={tabStyles.formGroup}>
+              <Text style={tabStyles.formLabel}>Nama Lengkap</Text>
+              <View style={tabStyles.inputWrapper}>
+                <Ionicons
+                  name="person-outline"
+                  size={18}
+                  color="#000000"
+                  style={tabStyles.inputIcon}
+                />
+                <TextInput
+                  style={tabStyles.textInput}
+                  placeholder="Nama lengkap Anda"
+                  placeholderTextColor="#6B7280"
+                  editable={!savingProfile}
+                  value={name}
+                  onChangeText={setName}
+                />
+              </View>
+            </View>
+
+            <View style={tabStyles.formGroup}>
+              <Text style={tabStyles.formLabel}>Alamat Email</Text>
+              <View style={tabStyles.inputWrapper}>
+                <Ionicons
+                  name="mail-outline"
+                  size={18}
+                  color="#000000"
+                  style={tabStyles.inputIcon}
+                />
+                <TextInput
+                  style={tabStyles.textInput}
+                  placeholder="nama@kampus.ac.id"
+                  placeholderTextColor="#6B7280"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  editable={!savingProfile}
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+            </View>
+
+            <View style={tabStyles.formGroup}>
+              <Text style={tabStyles.formLabel}>Nomor HP / WhatsApp</Text>
+              <View style={tabStyles.inputWrapper}>
+                <Ionicons
+                  name="call-outline"
+                  size={18}
+                  color="#000000"
+                  style={tabStyles.inputIcon}
+                />
+                <TextInput
+                  style={tabStyles.textInput}
+                  placeholder="081234567890"
+                  placeholderTextColor="#6B7280"
+                  keyboardType="phone-pad"
+                  editable={!savingProfile}
+                  value={noHp}
+                  onChangeText={setNoHp}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                tabStyles.saveButton,
+                savingProfile && tabStyles.saveButtonDisabled,
+              ]}
+              activeOpacity={0.85}
+              disabled={savingProfile}
+              onPress={handleSaveProfile}
+            >
+              {savingProfile ? (
+                <ActivityIndicator color="#000000" />
+              ) : (
+                <>
+                  <Ionicons name="save-outline" size={18} color="#000000" />
+                  <Text style={tabStyles.saveButtonText}>
+                    Simpan Perubahan Profil
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         ) : (
-          <>
-            <Ionicons name="log-out-outline" size={20} color="##DC2626" />
-            <Text style={tabStyles.logoutButtonText}>Keluar dari Akun</Text>
-          </>
+          <View style={tabStyles.card}>
+            <View style={tabStyles.formGroup}>
+              <Text style={tabStyles.formLabel}>Kata Sandi Saat Ini</Text>
+              <View style={tabStyles.inputWrapper}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={18}
+                  color="#000000"
+                  style={tabStyles.inputIcon}
+                />
+                <TextInput
+                  style={tabStyles.textInput}
+                  placeholder="Masukkan kata sandi lama"
+                  placeholderTextColor="#6B7280"
+                  secureTextEntry={!showCurrent}
+                  autoCapitalize="none"
+                  editable={!savingPassword}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                />
+                <TouchableOpacity
+                  style={tabStyles.eyeToggle}
+                  onPress={() => setShowCurrent(!showCurrent)}
+                >
+                  <Ionicons
+                    name={showCurrent ? "eye-off-outline" : "eye-outline"}
+                    size={18}
+                    color="#000000"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={tabStyles.formGroup}>
+              <Text style={tabStyles.formLabel}>Kata Sandi Baru</Text>
+              <View style={tabStyles.inputWrapper}>
+                <Ionicons
+                  name="key-outline"
+                  size={18}
+                  color="#000000"
+                  style={tabStyles.inputIcon}
+                />
+                <TextInput
+                  style={tabStyles.textInput}
+                  placeholder="Minimal 6 karakter"
+                  placeholderTextColor="#6B7280"
+                  secureTextEntry={!showNew}
+                  autoCapitalize="none"
+                  editable={!savingPassword}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                />
+                <TouchableOpacity
+                  style={tabStyles.eyeToggle}
+                  onPress={() => setShowNew(!showNew)}
+                >
+                  <Ionicons
+                    name={showNew ? "eye-off-outline" : "eye-outline"}
+                    size={18}
+                    color="#000000"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={tabStyles.formGroup}>
+              <Text style={tabStyles.formLabel}>Konfirmasi Kata Sandi Baru</Text>
+              <View style={tabStyles.inputWrapper}>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={18}
+                  color="#000000"
+                  style={tabStyles.inputIcon}
+                />
+                <TextInput
+                  style={tabStyles.textInput}
+                  placeholder="Ulangi kata sandi baru"
+                  placeholderTextColor="#6B7280"
+                  secureTextEntry={!showConfirm}
+                  autoCapitalize="none"
+                  editable={!savingPassword}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                />
+                <TouchableOpacity
+                  style={tabStyles.eyeToggle}
+                  onPress={() => setShowConfirm(!showConfirm)}
+                >
+                  <Ionicons
+                    name={showConfirm ? "eye-off-outline" : "eye-outline"}
+                    size={18}
+                    color="#000000"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                tabStyles.saveButton,
+                savingPassword && tabStyles.saveButtonDisabled,
+              ]}
+              activeOpacity={0.85}
+              disabled={savingPassword}
+              onPress={handleSavePassword}
+            >
+              {savingPassword ? (
+                <ActivityIndicator color="#000000" />
+              ) : (
+                <>
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={18}
+                    color="#000000"
+                  />
+                  <Text style={tabStyles.saveButtonText}>
+                    Perbarui Kata Sandi
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         )}
-      </TouchableOpacity>
-    </ScrollView>
+
+        {/* Tombol Logout - Neobrutalism Magenta Accent */}
+        <TouchableOpacity
+          style={[tabStyles.logoutButton, loadingLogout && { opacity: 0.65 }]}
+          activeOpacity={0.8}
+          onPress={handleLogout}
+          disabled={loadingLogout}
+        >
+          {loadingLogout ? (
+            <ActivityIndicator color="#000000" />
+          ) : (
+            <>
+              <Ionicons name="log-out-outline" size={20} color="#000000" />
+              <Text style={tabStyles.logoutButtonText}>Keluar dari Akun</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

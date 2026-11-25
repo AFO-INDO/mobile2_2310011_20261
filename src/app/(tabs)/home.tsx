@@ -4,8 +4,8 @@ import { homeStyles } from "@/styles/homeStyles";
 import { tabStyles } from "@/styles/tabStyles";
 import { showNotification } from "@/utils/alert";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -16,6 +16,14 @@ export default function HomeScreen() {
       if (session) setUser(session.user);
     });
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      getAuthSession().then((session) => {
+        if (session) setUser(session.user);
+      });
+    }, []),
+  );
   const { email } = useLocalSearchParams<{ email?: string }>();
   const { produkList, transaksiList } = useStore();
 
@@ -44,16 +52,18 @@ export default function HomeScreen() {
           <View style={homeStyles.welcomeTopRow}>
             <View style={homeStyles.statusBadge}>
               <Ionicons name="checkmark-circle" size={14} color="#000000" />
-              <Text style={homeStyles.statusBadgeText}>Kasir Aktif</Text>
+              <Text style={homeStyles.statusBadgeText}>Selamat Datang</Text>
             </View>
             <Text style={{ fontSize: 12, color: "#000000", fontWeight: "800" }}>
               SESI: MOBILE 2
             </Text>
           </View>
 
-          <Text style={homeStyles.greetingTitle}>Selamat Datang!</Text>
+          <Text style={homeStyles.greetingTitle}>
+            {user?.name ? `Selamat Datang, ${user.name}!` : "Selamat Datang!"}
+          </Text>
           <Text style={homeStyles.greetingEmail}>
-            {email || "luthfi.ariesto@kampus.ac.id"}
+            {user?.email || email || "luthfi.ariesto@kampus.ac.id"}
           </Text>
 
           {/* Quick Stats Overview */}

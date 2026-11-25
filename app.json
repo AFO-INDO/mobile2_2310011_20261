@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile2_2310011_20261",
+    "name": "2310011_Al Fahrul Ozi",
     "slug": "mobile2_2310011_20261",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -31,6 +31,15 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aplikasi membutuhkan akses galeri untuk memilih foto profil Anda.",
+          "cameraPermission": "Aplikasi membutuhkan akses kamera untuk mengambil foto profil secara langsung.",
+          "microphonePermission": false
         }
       ]
     ],
