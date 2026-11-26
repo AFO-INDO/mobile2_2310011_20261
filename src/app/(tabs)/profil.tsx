@@ -52,6 +52,20 @@ export default function ProfilScreen() {
   // State Upload Foto Profil & Logout
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [loadingLogout, setLoadingLogout] = useState(false);
+  const [photoVersion, setPhotoVersion] = useState(0);
+
+  const showAlert = (title: string, message: string, onOk?: () => void) => {
+    if (Platform.OS === "web") {
+      window.alert(`${title}\n\n${message}`);
+      onOk?.();
+    } else {
+      Alert.alert(
+        title,
+        message,
+        onOk ? [{ text: "OK", onPress: onOk }] : undefined,
+      );
+    }
+  };
 
   const fillProfileForm = (u: UserData) => {
     setUser(u);
@@ -85,26 +99,28 @@ export default function ProfilScreen() {
     }, []),
   );
 
-  // Fungsi Pilih Foto: Kamera Langsung atau Galeri HP
+  // Fungsi Pilih Foto: Kamera Langsung atau Galeri
   const handlePickPhoto = async (source: "camera" | "gallery") => {
     try {
-      if (source === "camera") {
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (!perm.granted) {
-          Alert.alert(
-            "Izin Kamera Ditolak",
-            "Aktifkan izin kamera pada pengaturan HP agar dapat mengambil foto.",
-          );
-          return;
-        }
-      } else {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!perm.granted) {
-          Alert.alert(
-            "Izin Galeri Ditolak",
-            "Aktifkan izin galeri pada pengaturan HP untuk memilih foto.",
-          );
-          return;
+      if (Platform.OS !== "web") {
+        if (source === "camera") {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (!perm.granted) {
+            showAlert(
+              "Izin Kamera Ditolak",
+              "Aktifkan izin kamera pada pengaturan HP agar dapat mengambil foto.",
+            );
+            return;
+          }
+        } else {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!perm.granted) {
+            showAlert(
+              "Izin Galeri Ditolak",
+              "Aktifkan izin galeri pada pengaturan HP untuk memilih foto.",
+            );
+            return;
+          }
         }
       }
 
@@ -126,7 +142,7 @@ export default function ProfilScreen() {
 
       const asset = result.assets[0];
       if (asset.fileSize && asset.fileSize > MAX_PHOTO_BYTES) {
-        Alert.alert(
+        showAlert(
           "Ukuran Foto Terlalu Besar",
           "Ukuran maksimal foto yang diperbolehkan adalah 5 MB.",
         );
@@ -135,8 +151,9 @@ export default function ProfilScreen() {
 
       const session = await getAuthSession();
       if (!session?.token) {
-        Alert.alert("Sesi Habis", "Silakan login kembali.");
-        router.replace("/login");
+        showAlert("Sesi Habis", "Silakan login kembali.", () =>
+          router.replace("/login"),
+        );
         return;
       }
 
@@ -145,20 +162,19 @@ export default function ProfilScreen() {
         uri: asset.uri,
         fileName: asset.fileName,
         mimeType: asset.mimeType,
+        file: (asset as any).file,
       });
 
       fillProfileForm(res.user);
       await updateStoredUser(res.user);
-      Alert.alert(
-        "Berhasil",
-        res.message || "Foto profil berhasil diperbarui.",
-      );
+      setPhotoVersion((v) => v + 1);
+      showAlert("Berhasil", res.message || "Foto profil berhasil diperbarui.");
     } catch (error) {
       const msg =
         error instanceof Error
           ? error.message
           : "Gagal mengunggah foto profil.";
-      Alert.alert("Upload Foto Gagal", msg);
+      showAlert("Upload Foto Gagal", msg);
     } finally {
       setUploadingPhoto(false);
     }
@@ -167,7 +183,7 @@ export default function ProfilScreen() {
   // Fungsi Simpan Update Profil (Nama, Email, Nomor HP)
   const handleSaveProfile = async () => {
     if (!name.trim() || !email.trim() || !noHp.trim()) {
-      Alert.alert(
+      showAlert(
         "Input Belum Lengkap",
         "Nama, email, dan nomor HP wajib diisi.",
       );
@@ -190,13 +206,13 @@ export default function ProfilScreen() {
 
       fillProfileForm(res.user);
       await updateStoredUser(res.user);
-      Alert.alert("Berhasil", res.message || "Profil berhasil diperbarui.");
+      showAlert("Berhasil", res.message || "Profil berhasil diperbarui.");
     } catch (error) {
       const msg =
         error instanceof Error
           ? error.message
           : "Gagal memperbarui data profil.";
-      Alert.alert("Update Profil Gagal", msg);
+      showAlert("Update Profil Gagal", msg);
     } finally {
       setSavingProfile(false);
     }
@@ -205,15 +221,12 @@ export default function ProfilScreen() {
   // Fungsi Simpan Kata Sandi Baru
   const handleSavePassword = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert(
-        "Input Belum Lengkap",
-        "Semua kolom kata sandi wajib diisi.",
-      );
+      showAlert("Input Belum Lengkap", "Semua kolom kata sandi wajib diisi.");
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert(
+      showAlert(
         "Kata Sandi Lemah",
         "Kata sandi baru minimal terdiri dari 6 karakter.",
       );
@@ -221,7 +234,7 @@ export default function ProfilScreen() {
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert(
+      showAlert(
         "Konfirmasi Tidak Cocok",
         "Konfirmasi kata sandi baru tidak sama.",
       );
@@ -245,13 +258,13 @@ export default function ProfilScreen() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      Alert.alert("Berhasil", res.message);
+      showAlert("Berhasil", res.message);
     } catch (error) {
       const msg =
         error instanceof Error
           ? error.message
           : "Gagal memperbarui kata sandi.";
-      Alert.alert("Ganti Kata Sandi Gagal", msg);
+      showAlert("Ganti Kata Sandi Gagal", msg);
     } finally {
       setSavingPassword(false);
     }
@@ -271,7 +284,8 @@ export default function ProfilScreen() {
     }
   };
 
-  const photoUrl = getStorageImageUrl(user?.foto);
+  const rawPhotoUrl = getStorageImageUrl(user?.foto);
+  const photoUrl = rawPhotoUrl ? `${rawPhotoUrl}?v=${photoVersion}` : null;
 
   return (
     <KeyboardAvoidingView
@@ -307,9 +321,7 @@ export default function ProfilScreen() {
           <Text style={tabStyles.sectionTitle}>
             {user?.name || "Profil Pengguna"}
           </Text>
-          <Text style={tabStyles.sectionSubtitle}>
-            {user?.email || "-"}
-          </Text>
+          <Text style={tabStyles.sectionSubtitle}>{user?.email || "-"}</Text>
 
           <View style={tabStyles.photoActionRow}>
             <TouchableOpacity
@@ -544,7 +556,9 @@ export default function ProfilScreen() {
             </View>
 
             <View style={tabStyles.formGroup}>
-              <Text style={tabStyles.formLabel}>Konfirmasi Kata Sandi Baru</Text>
+              <Text style={tabStyles.formLabel}>
+                Konfirmasi Kata Sandi Baru
+              </Text>
               <View style={tabStyles.inputWrapper}>
                 <Ionicons
                   name="checkmark-circle-outline"

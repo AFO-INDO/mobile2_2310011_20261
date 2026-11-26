@@ -29,6 +29,27 @@ export default function RegisterScreen() {
     "nama" | "email" | "noHp" | "password" | "confirm" | null
   >(null);
 
+  const showAlert = (title: string, message: string, onOk?: () => void) => {
+    if (Platform.OS === "web") {
+      window.alert(`${title}\n\n${message}`);
+      onOk?.();
+    } else {
+      Alert.alert(
+        title,
+        message,
+        onOk ? [{ text: "Ke Login", onPress: onOk }] : undefined,
+      );
+    }
+  };
+
+  const goToLogin = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/");
+    }
+  };
+
   const handleRegister = async () => {
     if (
       !nama.trim() ||
@@ -37,12 +58,12 @@ export default function RegisterScreen() {
       !password.trim() ||
       !confirmPassword.trim()
     ) {
-      Alert.alert("Pendaftaran Gagal", "Semua kolom formulir wajib diisi.");
+      showAlert("Pendaftaran Gagal", "Semua kolom formulir wajib diisi.");
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert(
+      showAlert(
         "Kata Sandi Lemah",
         "Kata sandi minimal terdiri dari 6 karakter.",
       );
@@ -50,7 +71,7 @@ export default function RegisterScreen() {
     }
 
     if (password !== confirmPassword) {
-      Alert.alert(
+      showAlert(
         "Tidak Cocok",
         "Konfirmasi kata sandi tidak sama dengan kata sandi.",
       );
@@ -67,17 +88,17 @@ export default function RegisterScreen() {
         password_confirmation: confirmPassword,
       });
 
-      Alert.alert(
+      showAlert(
         "Pendaftaran Berhasil!",
         `Akun atas nama ${result.user.name} telah tersimpan ke database. Silakan masuk melalui halaman Login.`,
-        [{ text: "Ke Login", onPress: () => router.back() }],
+        goToLogin,
       );
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : "Terjadi kesalahan saat mendaftarkan akun.";
-      Alert.alert("Pendaftaran Gagal", message);
+      showAlert("Pendaftaran Gagal", message);
     } finally {
       setLoading(false);
     }
@@ -97,7 +118,7 @@ export default function RegisterScreen() {
           <TouchableOpacity
             style={authStyles.topBackButton}
             disabled={loading}
-            onPress={() => router.back()}
+            onPress={goToLogin}
           >
             <Ionicons name="arrow-back" size={20} color="#0F172A" />
           </TouchableOpacity>
@@ -303,10 +324,7 @@ export default function RegisterScreen() {
 
             <View style={[authStyles.footerRow, { marginTop: 18 }]}>
               <Text style={authStyles.footerText}>Sudah memiliki akun?</Text>
-              <TouchableOpacity
-                disabled={loading}
-                onPress={() => router.back()}
-              >
+              <TouchableOpacity disabled={loading} onPress={goToLogin}>
                 <Text style={authStyles.footerLink}>Masuk di sini</Text>
               </TouchableOpacity>
             </View>
